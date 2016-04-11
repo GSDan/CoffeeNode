@@ -1,6 +1,7 @@
 import tweepy
 import pifacecad
 from datetime import datetime
+from dateutil import tz
 from time import sleep
 import threading
 from twitterkey import *
@@ -61,6 +62,8 @@ cad.lcd.store_custom_bitmap(7,fliesBM2)
 lock = threading.Lock()
 lastTime = datetime.now()
 timeFactor = 5
+from_zone = tz.gettz("GMT")
+to_zone = tz.tzlocal()
 
 # Run an animation according to the state of the coffee
 # Danger: Infinite loop!
@@ -113,7 +116,7 @@ def AgeAssessmentThread():
 	global timeFactor
 	global lastTime
 	while True:
-		timeDiff = datetime.now() - lastTime
+		timeDiff = datetime.now().replace(tzinfo=to_zone) - lastTime
 		timeFactor = max(min(90, timeDiff.seconds/60), 1)
 
 		print("Old factor: " + str(timeFactor))
@@ -151,10 +154,14 @@ class StreamWatcherListener(tweepy.StreamListener):
 		global lastTime
 		print "== ", status.author.screen_name, status.created_at, status.source
 		print ">> ", status.text
-		lastTime = status.created_at
-		FlashMessage(status.created_at.strftime('%H:%M'))
+
+		tweepyTime = status.created_at.replace(tzinfo=from_zone)
+		lastTime = tweepyTime.astimezone(to_zone)
+
+		FlashMessage(lastTime.strftime('%H:%M'))
 	def on_error(self, status_code):
 		print "ERROR STATUS CODE: " + str(status_code)
+		FlashMessage("ERROR: " + str(status_code))
 		if status_code == 420:
 			#returning False in on_data disconnects the stream
 			return False
@@ -182,6 +189,5 @@ thread2.setDaemon(True)
 thread1.start()
 thread2.start()
 
-# Start monitoring the twitter stream
 stream = tweepy.Stream(auth=auth, listener=listener, timeout=None)
 stream.filter(follow=[str(thisUser.id)])
