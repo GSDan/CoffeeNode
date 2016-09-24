@@ -64,63 +64,72 @@ lastTime = datetime.now()
 timeFactor = 5
 from_zone = tz.gettz("GMT")
 to_zone = tz.tzlocal()
+steamState = 0
 
 # Run an animation according to the state of the coffee
 # Danger: Infinite loop!
 def SteamThread():
 	global timeFactor
 	global lastTime
-	while True:
-		lock.acquire()
+	global steamState
+	lock.acquire()
+        waitTime = 15.0
+        
+        if timeFactor >= 60:
+                # If 90 mins or older, show flies over the coffee
+                if timeFactor >= 90:
+                	cad.lcd.set_cursor(0,0)
+                	cad.lcd.write_custom_bitmap(randint(6,7))
+                        cad.lcd.write_custom_bitmap(randint(6,7))
+                        waitTime = 1
 
-		# If 90 mins or older, show flies over the coffee
-		if timeFactor >= 90:
-			cad.lcd.set_cursor(0,0)
-			cad.lcd.write_custom_bitmap(randint(6,7))
-			cad.lcd.write_custom_bitmap(randint(6,7))
-			lock.release()
-			sleep(0.2)
-			continue
+                # If an hour or older, show no steam (went cold)
+                else:
+                        cad.lcd.set_cursor(0,0)
+                        cad.lcd.write("  ")
+                        
+                lock.release()
+                t = threading.Timer(waitTime, SteamThread)
+                t.daemon = True
+                t.start()
+        else:
+                # Show less steam after 15 mins
+                bmp = 2
+                if timeFactor > 15:
+                        bmp = 4
 
-		# If an hour or older, show no steam (went cold)
-		elif timeFactor >= 60:
-			cad.lcd.set_cursor(0,0)
-			cad.lcd.write("  ")
-			lock.release()
-			sleep(1)
-			continue
+                # Sleep controls animation speed
+                # Steam moves faster the fresher the coffee
+                # Capped at 5 fps
 
-		# Show less steam after 15 mins
-		bmp = 2
-		if timeFactor > 15:
-			bmp = 4
+                if steamState == 0:
+                        cad.lcd.set_cursor(0,0)
+                        cad.lcd.write_custom_bitmap(bmp)
+                        cad.lcd.write_custom_bitmap(bmp)
+                        steamState = 1
+                else:
+                        cad.lcd.set_cursor(0,0)
+                        cad.lcd.write_custom_bitmap(bmp + 1)
+                        cad.lcd.write_custom_bitmap(bmp + 1)
+                        steamState = 0
 
-		# Sleep controls animation speed
-		# Steam moves faster the fresher the coffee
-		# Capped at 5 fps
-		cad.lcd.set_cursor(0,0)
-		cad.lcd.write_custom_bitmap(bmp)
-		cad.lcd.write_custom_bitmap(bmp)
-		lock.release()
-		sleep(max(0.2,0.2 * (timeFactor/2)))
-		lock.acquire()
-		cad.lcd.set_cursor(0,0)
-		cad.lcd.write_custom_bitmap(bmp + 1)
-		cad.lcd.write_custom_bitmap(bmp + 1)
-		lock.release()
-		sleep(max(0.2,0.2 * (timeFactor/2)))
+                lock.release()
+                t = threading.Timer(max(0.2,0.2 * (timeFactor/2)), SteamThread)
+                t.daemon = True
+                t.start()
 
 # Assess the age of the last brew every 10 secs. 
-# Danger: Infinite loop!
-def AgeAssessmentThread():
+def AssessAge():
 	global timeFactor
 	global lastTime
-	while True:
-		timeDiff = datetime.now().replace(tzinfo=to_zone) - lastTime
-		timeFactor = max(min(90, timeDiff.seconds/60), 1)
 
-		print("Old factor: " + str(timeFactor))
-		sleep(10)
+	timeDiff = datetime.now().replace(tzinfo=to_zone) - lastTime
+	timeFactor = max(min(90, timeDiff.seconds/60), 1)
+
+	print("Old factor: " + str(timeFactor))
+        t = threading.Timer(10, AssessAge)
+        t.daemon = True
+        t.start()
 
 # Flash a message when a new jug is brewed
 def FlashMessage(message):
@@ -179,15 +188,8 @@ listener = StreamWatcherListener()
 for tweet in timeline:
 	listener.on_status(tweet)
 
-# Set up a thread to animate the steam
-thread1 = threading.Thread(name="steam", target=SteamThread)
-thread1.setDaemon(True)
-# Set up a thread to monitor the age of the current brew
-thread2 = threading.Thread(name="age", target=AgeAssessmentThread)
-thread2.setDaemon(True)
-
-thread1.start()
-thread2.start()
+AssessAge()
+SteamThread()
 
 stream = tweepy.Stream(auth=auth, listener=listener, timeout=None)
 stream.filter(follow=[str(thisUser.id)])
