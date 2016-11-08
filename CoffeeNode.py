@@ -123,7 +123,7 @@ def AssessAge():
 	global timeFactor
 	global lastTime
 
-	timeDiff = datetime.now().replace(tzinfo=to_zone) - lastTime
+	timeDiff = datetime.now().replace(tzinfo=to_zone) - lastTime.replace(tzinfo=to_zone)
 	timeFactor = max(min(90, timeDiff.seconds/60), 1)
 
 	print("Old factor: " + str(timeFactor))
@@ -175,21 +175,25 @@ class StreamWatcherListener(tweepy.StreamListener):
 			#returning False in on_data disconnects the stream
 			return False
 
-auth = tweepy.OAuthHandler(consumerKey, consumerSecret)
-auth.set_access_token(accessToken, accessTokenSecret)
-api = tweepy.API(auth)
-
-thisUser = api.get_user("OLCoffeeTime")
-timeline = api.user_timeline(screen_name=thisUser.screen_name, count=1)
-
-listener = StreamWatcherListener()
-
-# Get the last coffee brewed on startup
-for tweet in timeline:
-	listener.on_status(tweet)
-
 AssessAge()
 SteamThread()
 
-stream = tweepy.Stream(auth=auth, listener=listener, timeout=None)
-stream.filter(follow=[str(thisUser.id)])
+while True:
+        try:
+                auth = tweepy.OAuthHandler(consumerKey, consumerSecret)
+                auth.set_access_token(accessToken, accessTokenSecret)
+                api = tweepy.API(auth)
+
+                thisUser = api.get_user("OLCoffeeTime")
+                timeline = api.user_timeline(screen_name=thisUser.screen_name, count=1)
+                listener = StreamWatcherListener()
+
+                # Get the last coffee brewed on startup
+                for tweet in timeline:
+                        listener.on_status(tweet)
+        
+                stream = tweepy.Stream(auth=auth, listener=listener, timeout=None)
+                stream.filter(follow=[str(thisUser.id)])
+        except Exception, e:
+                FlashMessage(e.message)
+                sleep(20)
