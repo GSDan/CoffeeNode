@@ -4,6 +4,8 @@ from datetime import datetime
 from dateutil import tz
 from time import sleep
 import threading
+import os
+import io
 from twitterkey import *
 from random import randint
 
@@ -131,8 +133,23 @@ def AssessAge():
         t.daemon = True
         t.start()
 
+
+# Flash the screen by turning the backlight on/off
+def FlashScreen(targetCount):
+        global cad
+	count = 0
+	while count < targetCount:
+		cad.lcd.backlight_off()
+		sleep(0.5)
+		cad.lcd.backlight_on()
+		sleep(0.5)
+		count += 1
+
 # Flash a message when a new jug is brewed
-def FlashMessage(message):
+def ShowBrew(message):
+        global cad
+        global lock
+        
 	lock.acquire()
 	cad.lcd.clear()
 	
@@ -147,15 +164,23 @@ def FlashMessage(message):
 	cad.lcd.write(message)
 
 	lock.release()
+        FlashScreen(5);
 
-	# Flash the screen by turning the backlight on/off
-	count = 0
-	while count < 5:
-		cad.lcd.backlight_off()
-		sleep(0.5)
-		cad.lcd.backlight_on()
-		sleep(0.5)
-		count += 1
+# Flash a given message on blank screen
+def FlashMessage(message):
+        global cad
+        global lock
+        
+	lock.acquire()
+	cad.lcd.clear()
+	
+	# Write the message
+	cad.lcd.set_cursor(0,1)
+	cad.lcd.write(message)
+
+	lock.release()
+        FlashScreen(10);
+	
 
 # Listen to the twitter stream, flashing each new message
 class StreamWatcherListener(tweepy.StreamListener):
@@ -167,10 +192,13 @@ class StreamWatcherListener(tweepy.StreamListener):
 		tweepyTime = status.created_at.replace(tzinfo=from_zone)
 		lastTime = tweepyTime.astimezone(to_zone)
 
-		FlashMessage(lastTime.strftime('%H:%M'))
+		ShowBrew(lastTime.strftime('%H:%M'))
 	def on_error(self, status_code):
+                errFile = io.open('streamErrors.txt', 'W', encoding='utf-8')
 		print "ERROR STATUS CODE: " + str(status_code)
-		FlashMessage("ERROR: " + str(status_code))
+		errFile.write(str(status_code))
+		errFile.close()
+
 		if status_code == 420:
 			#returning False in on_data disconnects the stream
 			return False
@@ -178,8 +206,12 @@ class StreamWatcherListener(tweepy.StreamListener):
 AssessAge()
 SteamThread()
 
+attempts = 1
+
 while True:
         try:
+                FlashMessage("PREPPING")
+                sleep(30 * attempts) # Avoid rate limiting
                 auth = tweepy.OAuthHandler(consumerKey, consumerSecret)
                 auth.set_access_token(accessToken, accessTokenSecret)
                 api = tweepy.API(auth)
@@ -195,5 +227,9 @@ while True:
                 stream = tweepy.Stream(auth=auth, listener=listener, timeout=None)
                 stream.filter(follow=[str(thisUser.id)])
         except Exception, e:
+                attempts += 1
                 FlashMessage(e.message)
-                sleep(20)
+                errFile = io.open('streamErrors.txt', 'W', encoding='utf-8')
+		errFile.write(str(e.message))
+		errFile.close()
+                sleep(30 * attempts)
