@@ -5,7 +5,6 @@ from dateutil import tz
 from time import sleep
 import threading
 import os
-import io
 from twitterkey import *
 from random import randint
 
@@ -67,6 +66,8 @@ timeFactor = 5
 from_zone = tz.gettz("GMT")
 to_zone = tz.tzlocal()
 steamState = 0
+logFile = os.path.join(os.path.dirname(__file__), 'log.txt')
+print "Logging to: " + logFile
 
 # Run an animation according to the state of the coffee
 # Danger: Infinite loop!
@@ -192,12 +193,13 @@ class StreamWatcherListener(tweepy.StreamListener):
 		tweepyTime = status.created_at.replace(tzinfo=from_zone)
 		lastTime = tweepyTime.astimezone(to_zone)
 
+                with open(logFile, "a+") as txtFile:
+                        txtFile.write("BREW AT {0}\n".format(str(lastTime)))
+
 		ShowBrew(lastTime.strftime('%H:%M'))
 	def on_error(self, status_code):
-                errFile = io.open('streamErrors.txt', 'W', encoding='utf-8')
-		print "ERROR STATUS CODE: " + str(status_code)
-		errFile.write(str(status_code))
-		errFile.close()
+                with open(logFile, "a+") as txtFile:
+                        txtFile.write("SERVER ERROR at {1}: {2}\n".format(attempts, str(datetime.now()), str(status_code)))
 
 		if status_code == 420:
 			#returning False in on_data disconnects the stream
@@ -207,6 +209,9 @@ AssessAge()
 SteamThread()
 
 attempts = 1
+
+with open(logFile, "a+") as txtFile:
+        txtFile.write("STARTING PROGRAM: {0}\n".format(str(datetime.now())))
 
 while True:
         try:
@@ -227,9 +232,9 @@ while True:
                 stream = tweepy.Stream(auth=auth, listener=listener, timeout=None)
                 stream.filter(follow=[str(thisUser.id)])
         except Exception, e:
+                with open(logFile, "a+") as txtFile:
+                        txtFile.write("ERROR {0] at {1}: {2}\n".format(attempts, str(datetime.now()), e.message))
+                
                 attempts += 1
                 FlashMessage(e.message)
-                errFile = io.open('streamErrors.txt', 'W', encoding='utf-8')
-		errFile.write(str(e.message))
-		errFile.close()
                 sleep(30 * attempts)
